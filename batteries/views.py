@@ -4,6 +4,7 @@ from rest_framework import generics, filters, status, permissions
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.reverse import reverse
 from django_filters.rest_framework import DjangoFilterBackend
 from django_filters import rest_framework as filters_rf
 
@@ -17,11 +18,13 @@ from .serializers import (
     UserSerializer
 )
 
+# ✅ Pagination
 class StandardResultsSetPagination(PageNumberPagination):
     page_size = 12
     page_size_query_param = 'page_size'
     max_page_size = 50
 
+# ✅ Battery Filters
 class BatteryFilter(filters_rf.FilterSet):
     min_price = filters_rf.NumberFilter(field_name="price", lookup_expr='gte')
     max_price = filters_rf.NumberFilter(field_name="price", lookup_expr='lte')
@@ -48,13 +51,13 @@ class BatteryFilter(filters_rf.FilterSet):
         return queryset
     
     def filter_vehicle_compatibility(self, queryset, name, value):
-        """Filter batteries by vehicle compatibility"""
         return queryset.filter(
             Q(compatible_vehicles__icontains=value) |
             Q(vehicle_makes__icontains=value) |
             Q(vehicle_models__icontains=value)
         )
 
+# ✅ Battery Views
 class BatteryListView(generics.ListAPIView):
     queryset = Battery.objects.filter(is_active=True).select_related('brand').prefetch_related('categories')
     serializer_class = BatteryListSerializer
@@ -80,6 +83,7 @@ class BatteryDetailView(generics.RetrieveAPIView):
     serializer_class = BatteryDetailSerializer
     lookup_field = 'slug'
 
+# ✅ Brands & Categories
 class BrandListView(generics.ListAPIView):
     queryset = Brand.objects.all().order_by('name')
     serializer_class = BrandSerializer
@@ -95,15 +99,14 @@ class CategoryListView(generics.ListAPIView):
         
         if category_type:
             queryset = queryset.filter(category_type=category_type)
-        
         if parent_id:
             queryset = queryset.filter(parent_category_id=parent_id)
         elif parent_id is None and not category_type:
-            # If no parent specified and no type, return top-level categories
             queryset = queryset.filter(parent_category__isnull=True)
         
         return queryset.order_by('display_order', 'name')
 
+# ✅ Reviews
 class BatteryReviewListView(generics.ListAPIView):
     serializer_class = ReviewSerializer
     
@@ -115,6 +118,7 @@ class CreateReviewView(generics.CreateAPIView):
     serializer_class = CreateReviewSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+# ✅ Orders
 class OrderListView(generics.ListAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -134,6 +138,7 @@ class OrderDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return Order.objects.filter(user=self.request.user).prefetch_related('items__battery')
 
+# ✅ Wishlist
 class WishlistView(generics.ListAPIView):
     serializer_class = WishlistSerializer
     permission_classes = [permissions.IsAuthenticated]
@@ -145,19 +150,13 @@ class WishlistView(generics.ListAPIView):
 @permission_classes([permissions.IsAuthenticated])
 def add_to_wishlist(request):
     battery_id = request.data.get('battery_id')
-    
     try:
         battery = Battery.objects.get(id=battery_id, is_active=True)
-        wishlist_item, created = Wishlist.objects.get_or_create(
-            user=request.user,
-            battery=battery
-        )
-        
+        wishlist_item, created = Wishlist.objects.get_or_create(user=request.user, battery=battery)
         if created:
             return Response({'message': 'Battery added to wishlist'}, status=status.HTTP_201_CREATED)
         else:
             return Response({'message': 'Battery already in wishlist'}, status=status.HTTP_200_OK)
-    
     except Battery.DoesNotExist:
         return Response({'error': 'Battery not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -165,24 +164,19 @@ def add_to_wishlist(request):
 @permission_classes([permissions.IsAuthenticated])
 def remove_from_wishlist(request, battery_id):
     try:
-        wishlist_item = Wishlist.objects.get(
-            user=request.user,
-            battery_id=battery_id
-        )
+        wishlist_item = Wishlist.objects.get(user=request.user, battery_id=battery_id)
         wishlist_item.delete()
         return Response({'message': 'Battery removed from wishlist'}, status=status.HTTP_204_NO_CONTENT)
-    
     except Wishlist.DoesNotExist:
         return Response({'error': 'Battery not in wishlist'}, status=status.HTTP_404_NOT_FOUND)
 
+# ✅ Search & Dashboard
 @api_view(['GET'])
 def search_suggestions(request):
     query = request.GET.get('q', '')
-    
     if len(query) < 2:
         return Response([])
     
-    # Search for battery names, brands, and models
     batteries = Battery.objects.filter(
         Q(name__icontains=query) |
         Q(brand__name__icontains=query) |
@@ -190,28 +184,17 @@ def search_suggestions(request):
         is_active=True
     ).select_related('brand')[:10]
     
-    suggestions = []
-    for battery in batteries:
-        suggestions.append({
-            'text': f"{battery.brand.name} {battery.name}",
-            'type': 'battery',
-            'slug': battery.slug
-        })
-    
-    # Add brand suggestions
-    brands = Brand.objects.filter(name__icontains=query)[:5]
-    for brand in brands:
-        suggestions.append({
-            'text': brand.name,
-            'type': 'brand',
-            'slug': brand.name.lower().replace(' ', '-')
-        })
+    suggestions = [
+        {'text': f"{b.brand.name} {b.name}", 'type': 'battery', 'slug': b.slug}
+        for b in batteries
+    ]
+    for brand in Brand.objects.filter(name__icontains=query)[:5]:
+        suggestions.append({'text': brand.name, 'type': 'brand', 'slug': brand.name.lower().replace(' ', '-')})
     
     return Response(suggestions)
 
 @api_view(['GET'])
 def dashboard_stats(request):
-    """Get dashboard statistics for the homepage"""
     stats = {
         'total_batteries': Battery.objects.filter(is_active=True).count(),
         'featured_batteries': Battery.objects.filter(is_active=True, is_featured=True).count(),
@@ -220,12 +203,10 @@ def dashboard_stats(request):
         'total_categories': Category.objects.count(),
         'in_stock_batteries': Battery.objects.filter(is_active=True, stock_quantity__gt=0).count(),
     }
-    
     return Response(stats)
 
 @api_view(['GET'])
 def battery_specifications(request, battery_id):
-    """Get detailed specifications for a battery"""
     try:
         battery = Battery.objects.get(id=battery_id, is_active=True)
         specs = {
@@ -245,6 +226,21 @@ def battery_specifications(request, battery_id):
             'compatibility': battery.compatibility,
         }
         return Response(specs)
-    
     except Battery.DoesNotExist:
         return Response({'error': 'Battery not found'}, status=status.HTTP_404_NOT_FOUND)
+
+# ✅ API Root
+@api_view(['GET'])
+def api_root(request, format=None):
+    return Response({
+        'batteries': {
+            'list': reverse('battery-list', request=request, format=format),
+            'featured': reverse('featured-batteries', request=request, format=format),
+            'popular': reverse('popular-batteries', request=request, format=format),
+        },
+        'brands': reverse('brand-list', request=request, format=format),
+        'categories': reverse('category-list', request=request, format=format),
+        'orders': reverse('order-list', request=request, format=format),
+        'wishlist': reverse('wishlist', request=request, format=format),
+        'dashboard': reverse('dashboard-stats', request=request, format=format),
+    })
