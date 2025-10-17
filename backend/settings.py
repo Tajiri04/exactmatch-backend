@@ -1,7 +1,3 @@
-"""
-Django settings for backend project.
-"""
-
 from pathlib import Path
 import os
 
@@ -9,8 +5,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 🔐 SECURITY
 SECRET_KEY = 'django-insecure-2ejc)(034#px2aa^@_n(+((t5%#0o5%$6d8l!4&e6_m@1r&@p$'
-DEBUG = True  # Set to False when fully live and stable
-ALLOWED_HOSTS = ['*']  # Render handles domain routing, safe for now
+DEBUG = True
+ALLOWED_HOSTS = ['*']
 
 # ⚙️ APPLICATIONS
 INSTALLED_APPS = [
@@ -44,7 +40,7 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'frontend' / 'dist'],  # <-- serve Vite build
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -83,18 +79,17 @@ USE_TZ = True
 # 🖼️ STATIC & MEDIA
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
+STATICFILES_DIRS = [
+    BASE_DIR / 'frontend' / 'dist' / 'assets',  # <-- React assets
+]
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ⚙️ REST FRAMEWORK
 REST_FRAMEWORK = {
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
-    ],
-    'DEFAULT_RENDERER_CLASSES': [
-        'rest_framework.renderers.JSONRenderer',
-    ],
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.AllowAny'],
+    'DEFAULT_RENDERER_CLASSES': ['rest_framework.renderers.JSONRenderer'],
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
         'rest_framework.filters.SearchFilter',
@@ -106,19 +101,12 @@ REST_FRAMEWORK = {
 
 # 🌍 CORS CONFIGURATION
 CORS_ALLOWED_ORIGINS = [
-    "https://exactmatch.co.ke",         # ✅ your live frontend
-    "http://localhost:3000",            # local React dev
+    "https://exactmatch.co.ke",
+    "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:5173",            # Vite dev port
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://exactmatch.co.ke",
-]
-
+CSRF_TRUSTED_ORIGINS = ["https://exactmatch.co.ke"]
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_ALL_ORIGINS = False  # 🚫 disable open CORS for production
-
-# 📦 STATIC ROOT FIX
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+CORS_ALLOW_ALL_ORIGINS = False
